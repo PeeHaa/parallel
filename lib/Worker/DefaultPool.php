@@ -14,6 +14,8 @@ use Amp\Promise;
  */
 final class DefaultPool implements Pool
 {
+    const SHUTDOWN_TIMEOUT = 1000;
+
     /** @var bool Indicates if the pool is currently running. */
     private $running = true;
 
@@ -86,9 +88,15 @@ final class DefaultPool implements Pool
 
     public function __destruct()
     {
-        if ($this->isRunning()) {
-            $this->kill();
+        if (!$this->isRunning()) {
+            return;
         }
+
+        Promise\timeout($this->shutdown(), self::SHUTDOWN_TIMEOUT)->onResolve(function ($exception) {
+            if ($exception) {
+                $this->kill();
+            }
+        });
     }
 
     /**
@@ -189,7 +197,9 @@ final class DefaultPool implements Pool
         $this->running = false;
 
         foreach ($this->workers as $worker) {
-            $worker->kill();
+            if ($worker->isRunning()) {
+                $worker->kill();
+            }
         }
     }
 
