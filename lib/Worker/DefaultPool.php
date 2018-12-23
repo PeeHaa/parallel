@@ -2,7 +2,6 @@
 
 namespace Amp\Parallel\Worker;
 
-use Amp\Loop;
 use Amp\Parallel\Context\StatusError;
 use Amp\Promise;
 
@@ -91,26 +90,24 @@ final class DefaultPool implements Pool
                 return;
             }
 
-            Loop::run(function () use ($workers) {
-                try {
-                    $promises = [];
-                    foreach ($workers as $worker) {
-                        \assert($worker instanceof Worker);
-                        if ($worker->isRunning()) {
-                            $promises[] = $worker->shutdown();
-                        }
-                    }
-
-                    yield Promise\timeout(Promise\all($promises), self::SHUTDOWN_TIMEOUT);
-                } catch (\Throwable $exception) {
-                    foreach ($workers as $worker) {
-                        \assert($worker instanceof Worker);
-                        if ($worker->isRunning()) {
-                            $worker->kill();
-                        }
+            try {
+                $promises = [];
+                foreach ($workers as $worker) {
+                    \assert($worker instanceof Worker);
+                    if ($worker->isRunning()) {
+                        $promises[] = $worker->shutdown();
                     }
                 }
-            });
+
+                Promise\wait(Promise\timeout(Promise\all($promises), self::SHUTDOWN_TIMEOUT));
+            } catch (\Throwable $exception) {
+                foreach ($workers as $worker) {
+                    \assert($worker instanceof Worker);
+                    if ($worker->isRunning()) {
+                        $worker->kill();
+                    }
+                }
+            }
         });
     }
 
