@@ -4,6 +4,7 @@ namespace Amp\Parallel\Worker;
 
 use Amp\Parallel\Context\StatusError;
 use Amp\Promise;
+use function Amp\asyncCoroutine;
 
 /**
  * Provides a pool of workers that can be used to execute multiple tasks asynchronously.
@@ -65,7 +66,7 @@ final class DefaultPool implements Pool
         $this->idleWorkers = new \SplQueue;
         $this->busyQueue = new \SplQueue;
 
-        $workers = $this->workers;
+        $workers = &$this->workers;
         $idleWorkers = $this->idleWorkers;
         $busyQueue = $this->busyQueue;
 
@@ -84,6 +85,31 @@ final class DefaultPool implements Pool
 
             $idleWorkers->push($worker);
         };
+
+        \register_shutdown_function(asyncCoroutine(static function () use (&$workers) {
+            if ($workers === null) {
+                return;
+            }
+
+            try {
+                $promises = [];
+                foreach ($workers as $worker) {
+                    \assert($worker instanceof Worker);
+                    if ($worker->isRunning()) {
+                        $promises[] = $worker->shutdown();
+                    }
+                }
+
+                yield Promise\timeout(Promise\all($promises), self::SHUTDOWN_TIMEOUT);
+            } catch (\Throwable $exception) {
+                foreach ($workers as $worker) {
+                    \assert($worker instanceof Worker);
+                    if ($worker->isRunning()) {
+                        $worker->kill();
+                    }
+                }
+            }
+        }));
     }
 
     public function __destruct()
@@ -92,10 +118,20 @@ final class DefaultPool implements Pool
             return;
         }
 
-        Promise\timeout($this->shutdown(), self::SHUTDOWN_TIMEOUT)->onResolve(function ($exception) {
-            if ($exception) {
-                $this->kill();
+        $workers = &$this->workers;
+        Promise\timeout($this->shutdown(), self::SHUTDOWN_TIMEOUT)->onResolve(static function ($exception) use (&$workers) {
+            if (!$exception) {
+                return;
             }
+
+            foreach ($workers as $worker) {
+                \assert($worker instanceof Worker);
+                if ($worker->isRunning()) {
+                    $worker->kill();
+                }
+            }
+
+            $workers = null; // Null reference to free memory from shutdown function.
         });
     }
 
@@ -197,6 +233,7 @@ final class DefaultPool implements Pool
         $this->running = false;
 
         foreach ($this->workers as $worker) {
+            \assert($worker instanceof Worker);
             if ($worker->isRunning()) {
                 $worker->kill();
             }
