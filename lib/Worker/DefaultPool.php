@@ -2,9 +2,9 @@
 
 namespace Amp\Parallel\Worker;
 
+use Amp\Loop;
 use Amp\Parallel\Context\StatusError;
 use Amp\Promise;
-use function Amp\asyncCoroutine;
 
 /**
  * Provides a pool of workers that can be used to execute multiple tasks asynchronously.
@@ -86,30 +86,32 @@ final class DefaultPool implements Pool
             $idleWorkers->push($worker);
         };
 
-        \register_shutdown_function(asyncCoroutine(static function () use (&$workers) {
+        \register_shutdown_function(function () use (&$workers) {
             if ($workers === null) {
                 return;
             }
 
-            try {
-                $promises = [];
-                foreach ($workers as $worker) {
-                    \assert($worker instanceof Worker);
-                    if ($worker->isRunning()) {
-                        $promises[] = $worker->shutdown();
+            Loop::run(function () use ($workers) {
+                try {
+                    $promises = [];
+                    foreach ($workers as $worker) {
+                        \assert($worker instanceof Worker);
+                        if ($worker->isRunning()) {
+                            $promises[] = $worker->shutdown();
+                        }
                     }
-                }
 
-                yield Promise\timeout(Promise\all($promises), self::SHUTDOWN_TIMEOUT);
-            } catch (\Throwable $exception) {
-                foreach ($workers as $worker) {
-                    \assert($worker instanceof Worker);
-                    if ($worker->isRunning()) {
-                        $worker->kill();
+                    yield Promise\timeout(Promise\all($promises), self::SHUTDOWN_TIMEOUT);
+                } catch (\Throwable $exception) {
+                    foreach ($workers as $worker) {
+                        \assert($worker instanceof Worker);
+                        if ($worker->isRunning()) {
+                            $worker->kill();
+                        }
                     }
                 }
-            }
-        }));
+            });
+        });
     }
 
     public function __destruct()
