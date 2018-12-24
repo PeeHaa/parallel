@@ -38,7 +38,7 @@ abstract class TaskWorker implements Worker
         $this->context = $context;
 
         $context = &$this->context;
-        \register_shutdown_function(function () use (&$context) {
+        \register_shutdown_function(static function () use (&$context) {
             if ($context === null || !$context->isRunning()) {
                 return;
             }

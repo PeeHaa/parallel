@@ -14,8 +14,6 @@ use Amp\Promise;
  */
 final class DefaultPool implements Pool
 {
-    const SHUTDOWN_TIMEOUT = 1000;
-
     /** @var bool Indicates if the pool is currently running. */
     private $running = true;
 
