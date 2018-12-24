@@ -63,7 +63,7 @@ final class DefaultPool implements Pool
         $this->idleWorkers = new \SplQueue;
         $this->busyQueue = new \SplQueue;
 
-        $workers = &$this->workers;
+        $workers = $this->workers;
         $idleWorkers = $this->idleWorkers;
         $busyQueue = $this->busyQueue;
 
