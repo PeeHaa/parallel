@@ -84,54 +84,6 @@ final class DefaultPool implements Pool
 
             $idleWorkers->push($worker);
         };
-
-        \register_shutdown_function(function () use (&$workers) {
-            if ($workers === null) {
-                return;
-            }
-
-            try {
-                $promises = [];
-                foreach ($workers as $worker) {
-                    \assert($worker instanceof Worker);
-                    if ($worker->isRunning()) {
-                        $promises[] = $worker->shutdown();
-                    }
-                }
-
-                Promise\wait(Promise\timeout(Promise\all($promises), self::SHUTDOWN_TIMEOUT));
-            } catch (\Throwable $exception) {
-                foreach ($workers as $worker) {
-                    \assert($worker instanceof Worker);
-                    if ($worker->isRunning()) {
-                        $worker->kill();
-                    }
-                }
-            }
-        });
-    }
-
-    public function __destruct()
-    {
-        if (!$this->isRunning()) {
-            return;
-        }
-
-        $workers = &$this->workers;
-        Promise\timeout($this->shutdown(), self::SHUTDOWN_TIMEOUT)->onResolve(static function ($exception) use (&$workers) {
-            if (!$exception) {
-                return;
-            }
-
-            foreach ($workers as $worker) {
-                \assert($worker instanceof Worker);
-                if ($worker->isRunning()) {
-                    $worker->kill();
-                }
-            }
-
-            $workers = null; // Null reference to free memory from shutdown function.
-        });
     }
 
     /**
